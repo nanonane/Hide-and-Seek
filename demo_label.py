@@ -4,7 +4,7 @@ os.environ['TOKENIZERS_PARALLELISM'] = 'False'
 import warnings
 import gc
 import time
-from typing import Dict
+from typing import Dict, Any
 
 import numpy as np
 import torch
@@ -19,6 +19,9 @@ import langdetect
 langdetect.DetectorFactory.seed = 0
 from utils import get_ents_en, get_ents_zh, add_pinyin, get_labelled_text
 
+import json
+from tqdm import tqdm
+
 import openai
 # openai.api_base = "https://cp.ojkb.xyz/v1"
 openai.api_key = "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"
@@ -28,8 +31,8 @@ openai.api_key = "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"
 tasks = ['trans']
 
 # specify base model
-#base_model = 'bloomz-560m'
-base_model = 'bloomz-1b7'
+base_model = 'bloomz-560m'
+# base_model = 'bloomz-1b7'
 base_model_dir = f'./models/{base_model}'
 
 # specify langauge
@@ -131,27 +134,46 @@ def recover_text(sub_content, sub_output, content, model, tokenizer, task_type, 
 if __name__ == '__main__':
     # load models
     print('loading model...')
-    model = AutoModelForCausalLM.from_pretrained(base_model_dir, load_in_4bit=True, quantization_config=bnb_config, device_map='cuda:0', trust_remote_code=True, torch_dtype=torch.float16)
+    model = AutoModelForCausalLM.from_pretrained(base_model_dir, quantization_config=bnb_config, device_map='cuda:0', trust_remote_code=True, torch_dtype=torch.float16)
     tokenizer = AutoTokenizer.from_pretrained(base_model_dir, trust_remote_code=True)
     smart_tokenizer_and_embedding_resize(tokenizer=tokenizer,model=model)
     spacy_model = spacy.load(f'{lang}_core_web_trf')
-    ltp = LTP("LTP/small")
-    if torch.cuda.is_available():
-        ltp.cuda()
-    while True:
-        # input text
-        raw_input = input('\033[1;31minput:\033[0m ')
-        if raw_input == 'q':
-            print('quit')
-            break
-        # hide
-        hidden_text = hide_text(raw_input, spacy_model)
-        print('\033[1;31mhidden text:\033[0m ', hidden_text)
-        # seek
-        for task_type in tasks:
-            sub_output = get_api_output(hidden_text, task_type, lang).replace('\n', ';')
-            print(f'\033[1;31mhidden output for {task_type}:\033[0m ', sub_output)
-            if lang == 'zh' and task_type == 'translate':
-                raw_input = add_pinyin(raw_input, ltp)
-            output_text = recover_text(hidden_text, sub_output, raw_input, model, tokenizer, task_type, lang)
-            print(f'\033[1;31mrecovered output for {task_type}:\033[0m ', output_text)
+    # ltp = LTP("LTP/small")
+    # if torch.cuda.is_available():
+    #     ltp.cuda()
+
+    DATA_DIR = "/home/ykwy/EnochPB/USPB/qTest"
+    OUTPUT_DIR = "./output-HaS-label"
+    dir_list = os.listdir(DATA_DIR)
+    docs = []
+    len_list = []
+    print('hiding text...')
+    for dir_name in tqdm(dir_list):
+        data_file = os.path.join(DATA_DIR, dir_name, 'longResult.json')
+        out_file = os.path.join(OUTPUT_DIR, dir_name + ".txt")
+        with open(data_file, 'r') as rf:
+            data = json.load(rf)
+            queries = eval(data['gptAnswerInList'])
+        hidden_text = []
+        for query in queries:
+            hidden_text.append(hide_text(query, spacy_model))
+        with open(out_file, 'w') as wf:
+            json.dump(hidden_text, wf)
+
+    # while True:
+    #     # input text
+    #     raw_input = input('\033[1;31minput:\033[0m ')
+    #     if raw_input == 'q':
+    #         print('quit')
+    #         break
+    #     # hide
+    #     hidden_text_list = hide_text(raw_input, spacy_model)
+    #     print('\033[1;31mhidden text:\033[0m ', hidden_text_list)
+    #     # seek
+    #     for task_type in tasks:
+    #         sub_output = get_api_output(hidden_text_list, task_type, lang).replace('\n', ';')
+    #         print(f'\033[1;31mhidden output for {task_type}:\033[0m ', sub_output)
+    #         if lang == 'zh' and task_type == 'translate':
+    #             raw_input = add_pinyin(raw_input, ltp)
+    #         output_text = recover_text(hidden_text_list, sub_output, raw_input, model, tokenizer, task_type, lang)
+    #         print(f'\033[1;31mrecovered output for {task_type}:\033[0m ', output_text)

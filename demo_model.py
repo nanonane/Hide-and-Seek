@@ -19,6 +19,9 @@ import langdetect
 langdetect.DetectorFactory.seed = 0
 from utils import get_ents_en, get_ents_zh, add_pinyin, get_labelled_text
 
+import json
+from tqdm import tqdm
+
 import openai
 openai.api_key = "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"
 
@@ -27,8 +30,8 @@ openai.api_key = "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"
 tasks = ['trans']
 
 # specify base model
-#base_model = 'bloomz-560m'
-base_model = 'bloomz-1b7'
+base_model = 'bloomz-560m'
+# base_model = 'bloomz-1b7'
 base_model_dir = f'./models/{base_model}'
 
 # specify langauge
@@ -36,8 +39,8 @@ lang = 'en'
 
 # specify lora weights
 hide_model_path = f"./lora_weights/hide_{base_model}_{lang}/checkpoint-6300"
-hide_method = 'model1b7'
-#hide_method = 'model560m'
+# hide_method = 'model1b7'
+hide_method = 'model560m'
 seek_model_path = f"./lora_weights/seek-%s_{hide_method}_{base_model}_{lang}/checkpoint-2700"
 
 # special tokens
@@ -96,7 +99,7 @@ def hide_text(raw_input, target_ents, model, tokenizer, lang, ltp, spacy_model):
             target_ents = get_ents_en(raw_input, spacy_model)
         else:
             target_ents = get_ents_zh(raw_input, ltp, spacy_model)
-        print(target_ents)
+        # print(target_ents)
     input_text = initial_prompt % (raw_input, target_ents)
     input_text += tokenizer.bos_token
     inputs = tokenizer(input_text, return_tensors='pt')
@@ -108,7 +111,7 @@ def hide_text(raw_input, target_ents, model, tokenizer, lang, ltp, spacy_model):
             return True
         return False
     pred = sub_model.generate(
-        **inputs, 
+        **inputs,
         generation_config = GenerationConfig(
             max_new_tokens = int(len(inputs['input_ids'][0]) * 1.3),
             do_sample=False,
@@ -151,7 +154,7 @@ def recover_text(sub_content, sub_output, content, model, tokenizer, task_type, 
             return True
         return False
     pred = re_model.generate(
-        **inputs, 
+        **inputs,
         generation_config = GenerationConfig(
             max_new_tokens=1024,
             do_sample=False,
@@ -168,29 +171,50 @@ def recover_text(sub_content, sub_output, content, model, tokenizer, task_type, 
 if __name__ == '__main__':
     # load models
     print('loading model...')
-    model = AutoModelForCausalLM.from_pretrained(base_model_dir, load_in_4bit=True, quantization_config=bnb_config, device_map='cuda:0', trust_remote_code=True, torch_dtype=torch.float16)
+    model = AutoModelForCausalLM.from_pretrained(base_model_dir, quantization_config=bnb_config, device_map='cuda:0', trust_remote_code=True, torch_dtype=torch.float16)
     tokenizer = AutoTokenizer.from_pretrained(base_model_dir, trust_remote_code=True)
     smart_tokenizer_and_embedding_resize(tokenizer=tokenizer,model=model)
     spacy_model = spacy.load(f'{lang}_core_web_trf')
     # only chinese uses ltp
-    ltp = LTP("LTP/small")
-    if torch.cuda.is_available():
-        ltp.cuda()
-    while True:
-        # input text
-        raw_input = input('\033[1;31minput:\033[0m ')
-        if raw_input == 'q':
-            print('quit')
-            break
-        # hide
-        target_ents = input('\033[1;31mtarget entities:\033[0m ')
-        hidden_text = hide_text(raw_input, target_ents, model, tokenizer, lang, ltp, spacy_model)
-        print('\033[1;31mhide_text:\033[0m ', hidden_text)
-        # seek
-        for task_type in tasks:
-            sub_output = get_api_output(hidden_text, task_type, lang).replace('\n', ';')
-            print(f'\033[1;31mhidden output for {task_type}:\033[0m ', sub_output)
-            if lang == 'zh' and task_type == 'trans':
-                raw_input = add_pinyin(raw_input, ltp)
-            output_text = recover_text(hidden_text, sub_output, raw_input, model, tokenizer, task_type, lang)
-            print(f'\033[1;31mrecovered output for {task_type}:\033[0m ', output_text)
+    # ltp = LTP("LTP/small")
+    # if torch.cuda.is_available():
+    #     ltp.cuda()
+
+    DATA_DIR = "/home/ykwy/EnochPB/USPB/qTest"
+    OUTPUT_DIR = "./output-HaS-model"
+    dir_list = os.listdir(DATA_DIR)
+    docs = []
+    len_list = []
+    print('hiding text...')
+    for dir_name in tqdm(dir_list):
+        data_file = os.path.join(DATA_DIR, dir_name, 'longResult.json')
+        out_file = os.path.join(OUTPUT_DIR, dir_name + ".txt")
+        with open(data_file, 'r') as rf:
+            data = json.load(rf)
+            queries = eval(data['gptAnswerInList'])
+        hidden_text_list = []
+        for query in queries:
+            text = hide_text(query, 'auto', model, tokenizer, lang, None, spacy_model)
+            text = text[:text.rfind(" Given words: [")]
+            hidden_text_list.append(text)
+        with open(out_file, 'w') as wf:
+            json.dump(hidden_text_list, wf)
+
+    # while True:
+    #     # input text
+    #     raw_input = input('\033[1;31minput:\033[0m ')
+    #     if raw_input == 'q':
+    #         print('quit')
+    #         break
+    #     # hide
+    #     target_ents = input('\033[1;31mtarget entities:\033[0m ')
+    #     hidden_text_list = hide_text(raw_input, target_ents, model, tokenizer, lang, None, spacy_model)
+    #     print('\033[1;31mhide_text:\033[0m ', hidden_text_list)
+    #     # seek
+    #     for task_type in tasks:
+    #         sub_output = get_api_output(hidden_text_list, task_type, lang).replace('\n', ';')
+    #         print(f'\033[1;31mhidden output for {task_type}:\033[0m ', sub_output)
+    #         if lang == 'zh' and task_type == 'trans':
+    #             raw_input = add_pinyin(raw_input, ltp)
+    #         output_text = recover_text(hidden_text_list, sub_output, raw_input, model, tokenizer, task_type, lang)
+    #         print(f'\033[1;31mrecovered output for {task_type}:\033[0m ', output_text)
