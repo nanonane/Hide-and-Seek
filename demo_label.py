@@ -142,18 +142,18 @@ if __name__ == '__main__':
     # if torch.cuda.is_available():
     #     ltp.cuda()
 
-    DATA_DIR = "/home/ykwy/EnochPB/USPB/qTest"
+    DATA_DIR = "/home/ykwy/EnochPB/USPB/ForUsers/qOnly"
     OUTPUT_DIR = "./output-HaS-label"
     dir_list = os.listdir(DATA_DIR)
     docs = []
     len_list = []
     print('hiding text...')
-    for dir_name in tqdm(dir_list):
-        data_file = os.path.join(DATA_DIR, dir_name, 'longResult.json')
-        out_file = os.path.join(OUTPUT_DIR, dir_name + ".txt")
+    for file_name in tqdm(dir_list):
+        data_file = os.path.join(DATA_DIR, file_name)
+        file_idx = file_name.split(".")[0]
+        out_file = os.path.join(OUTPUT_DIR, file_idx + ".json")
         with open(data_file, 'r') as rf:
-            data = json.load(rf)
-            queries = eval(data['gptAnswerInList'])
+            queries = json.load(rf)
         hidden_text = []
         for query in queries:
             hidden_text.append(hide_text(query, spacy_model))
