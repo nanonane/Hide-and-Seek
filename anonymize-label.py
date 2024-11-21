@@ -33,7 +33,7 @@ tasks = ['trans']
 # specify base model
 base_model = 'bloomz-560m'
 # base_model = 'bloomz-1b7'
-base_model_dir = f'./models/{base_model}'
+base_model_dir = f'./models/{base_model}/{base_model}'
 
 # specify langauge
 lang = 'en'
@@ -145,8 +145,6 @@ if __name__ == '__main__':
     DATA_DIR = "/home/ykwy/EnochPB/USPB/ForUsers/qOnly"
     OUTPUT_DIR = "./output-HaS-label"
     dir_list = os.listdir(DATA_DIR)
-    docs = []
-    len_list = []
     print('hiding text...')
     for file_name in tqdm(dir_list):
         data_file = os.path.join(DATA_DIR, file_name)
